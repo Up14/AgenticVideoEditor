@@ -1,5 +1,6 @@
 /* ══════════════════════════════════════════════
    Video Selection Tool — Dark Editor Theme
+   Multi-Segment Support
    ══════════════════════════════════════════════ */
 
 :root {
@@ -279,16 +280,95 @@ body {
   display: block;
 }
 
-/* ── Toolbar ── */
+/* ── Toolbar (Multi-Segment) ── */
 
-.toolbar {
+.toolbar--multi {
   display: flex;
-  align-items: center;
-  gap: 20px;
+  flex-direction: column;
+  gap: 12px;
   padding: 12px 16px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+}
+
+.toolbar__segments-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.toolbar__chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.segment-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: transparent;
+}
+
+.segment-chip:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.segment-chip--active {
+  font-weight: 600;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.05);
+}
+
+.segment-chip__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.segment-chip__range {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.segment-chip__remove {
+  margin-left: 2px;
+  font-size: 10px;
+  opacity: 0.5;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.segment-chip__remove:hover {
+  opacity: 1;
+}
+
+.segment-chip--add {
+  border-style: dashed;
+  border-color: var(--text-muted) !important;
+  color: var(--text-muted) !important;
+}
+
+.segment-chip--add:hover {
+  border-color: var(--text-secondary) !important;
+  color: var(--text-secondary) !important;
+}
+
+.toolbar__controls-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
   flex-wrap: wrap;
 }
 
@@ -310,8 +390,6 @@ body {
 .toolbar__time {
   font-family: var(--font-mono);
   font-size: 14px;
-  color: var(--accent);
-  background: var(--accent-dim);
   padding: 4px 10px;
   border-radius: var(--radius-sm);
   min-width: 50px;
@@ -327,7 +405,7 @@ body {
   border-radius: var(--radius-sm);
 }
 
-.toolbar button {
+.toolbar__controls-row button {
   padding: 6px 10px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
@@ -338,7 +416,7 @@ body {
   transition: background-color 0.15s;
 }
 
-.toolbar button:hover:not(:disabled) {
+.toolbar__controls-row button:hover:not(:disabled) {
   background: var(--bg-elevated);
 }
 
@@ -371,7 +449,7 @@ body {
   cursor: not-allowed;
 }
 
-/* ── Export Result ── */
+/* ── Export Result (Multi-Segment) ── */
 
 .export-result {
   padding: 16px 20px;
@@ -385,20 +463,41 @@ body {
   color: var(--accent);
 }
 
+.export-result__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.export-result__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid;
+}
+
+.export-result__label {
+  font-weight: 600;
+  font-size: 13px;
+}
+
 .export-result__links {
   display: flex;
-  gap: 12px;
+  gap: 8px;
 }
 
 .btn-download {
   display: inline-block;
-  padding: 10px 20px;
+  padding: 6px 14px;
   background: var(--accent);
   color: #000;
   text-decoration: none;
   border-radius: var(--radius-sm);
   font-weight: 600;
-  font-size: 14px;
+  font-size: 12px;
   transition: background-color 0.2s, transform 0.1s;
 }
 
@@ -407,12 +506,24 @@ body {
   transform: translateY(-1px);
 }
 
-/* ── Caption Panel ── */
+.btn-download--secondary {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
 
-.caption-panel {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+.btn-download--secondary:hover {
+  background: var(--border-light);
+}
+
+/* ── Caption Panel (Single List) ── */
+
+.caption-panel--single {
+  display: block;
+}
+
+.caption-panel--single .caption-panel__list {
+  max-height: 350px;
 }
 
 .caption-panel__section {
@@ -420,10 +531,6 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
-}
-
-.caption-panel__section--selected {
-  border-color: rgba(0, 220, 100, 0.25);
 }
 
 .caption-panel__section h3 {
@@ -435,6 +542,13 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.segment-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .caption-count {
@@ -476,8 +590,8 @@ body {
 }
 
 .caption-item--active {
-  background: var(--bg-elevated) !important;
-  border-left-color: var(--danger);
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-left-color: #ffffff;
 }
 
 .caption-item--in-selection {
@@ -538,7 +652,7 @@ body {
     align-items: stretch;
   }
 
-  .toolbar {
+  .toolbar__controls-row {
     flex-direction: column;
     align-items: flex-start;
   }
@@ -552,7 +666,7 @@ body {
     flex: 1;
   }
 
-  .caption-panel {
+  .caption-panel--multi {
     grid-template-columns: 1fr;
   }
 }

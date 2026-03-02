@@ -1,31 +1,32 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import type { Caption } from "../api/client";
+import type { Segment } from "../types";
+import { getSegmentColor } from "../types";
 
 interface Props {
   duration: number;
   currentTime: number;
   captions: Caption[];
-  selectionStart: number;
-  selectionEnd: number;
-  onSelectionChange: (start: number, end: number) => void;
+  segments: Segment[];
+  activeSegmentId: string | null;
+  onSegmentChange: (id: string, start: number, end: number) => void;
+  onSegmentSelect: (id: string) => void;
   onSeek: (time: number) => void;
 }
 
-type DragTarget = "start" | "end" | "region" | null;
+type DragTarget = { segmentId: string; handle: "start" | "end" | "region" } | null;
 
 /**
- * Interactive SVG timeline with:
- * - Caption segments as labeled blocks
- * - Green selection region with draggable handles
- * - Playhead showing current position
+ * Interactive SVG timeline supporting multiple colored segments.
  */
 export default function Timeline({
   duration,
   currentTime,
   captions,
-  selectionStart,
-  selectionEnd,
-  onSelectionChange,
+  segments,
+  activeSegmentId,
+  onSegmentChange,
+  onSegmentSelect,
   onSeek,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -49,21 +50,24 @@ export default function Timeline({
     [duration]
   );
 
-
   // ── Mouse Handlers ──
 
   const handleMouseDown = useCallback(
-    (e: React.MouseEvent, target: DragTarget) => {
+    (e: React.MouseEvent, segmentId: string, handle: "start" | "end" | "region") => {
       e.preventDefault();
       e.stopPropagation();
-      setDragTarget(target);
+      setDragTarget({ segmentId, handle });
+      onSegmentSelect(segmentId);
 
-      if (target === "region") {
-        const time = xToTime(e.clientX);
-        setDragOffset(time - selectionStart);
+      if (handle === "region") {
+        const seg = segments.find((s) => s.id === segmentId);
+        if (seg) {
+          const time = xToTime(e.clientX);
+          setDragOffset(time - seg.start);
+        }
       }
     },
-    [xToTime, selectionStart]
+    [xToTime, segments, onSegmentSelect]
   );
 
   const handleTimelineClick = useCallback(
@@ -78,20 +82,23 @@ export default function Timeline({
   useEffect(() => {
     if (!dragTarget) return;
 
+    const seg = segments.find((s) => s.id === dragTarget.segmentId);
+    if (!seg) return;
+
     const handleMouseMove = (e: MouseEvent) => {
       const time = xToTime(e.clientX);
 
-      if (dragTarget === "start") {
-        const newStart = Math.max(0, Math.min(time, selectionEnd - 1));
-        onSelectionChange(newStart, selectionEnd);
-      } else if (dragTarget === "end") {
-        const newEnd = Math.min(duration, Math.max(time, selectionStart + 1));
-        onSelectionChange(selectionStart, newEnd);
-      } else if (dragTarget === "region") {
-        const selDuration = selectionEnd - selectionStart;
+      if (dragTarget.handle === "start") {
+        const newStart = Math.max(0, Math.min(time, seg.end - 1));
+        onSegmentChange(dragTarget.segmentId, newStart, seg.end);
+      } else if (dragTarget.handle === "end") {
+        const newEnd = Math.min(duration, Math.max(time, seg.start + 1));
+        onSegmentChange(dragTarget.segmentId, seg.start, newEnd);
+      } else if (dragTarget.handle === "region") {
+        const segDuration = seg.end - seg.start;
         let newStart = time - dragOffset;
-        newStart = Math.max(0, Math.min(newStart, duration - selDuration));
-        onSelectionChange(newStart, newStart + selDuration);
+        newStart = Math.max(0, Math.min(newStart, duration - segDuration));
+        onSegmentChange(dragTarget.segmentId, newStart, newStart + segDuration);
       }
     };
 
@@ -103,27 +110,19 @@ export default function Timeline({
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [
-    dragTarget,
-    dragOffset,
-    selectionStart,
-    selectionEnd,
-    duration,
-    xToTime,
-    onSelectionChange,
-  ]);
+  }, [dragTarget, dragOffset, segments, duration, xToTime, onSegmentChange]);
 
   if (duration <= 0) return null;
 
   // ── Rendering ──
 
-  // Compute SVG width from container
   const svgWidth = svgRef.current?.getBoundingClientRect().width ?? 800;
   const usableWidth = svgWidth - PADDING * 2;
-
-  const selStartX = PADDING + (selectionStart / duration) * usableWidth;
-  const selEndX = PADDING + (selectionEnd / duration) * usableWidth;
   const playheadX = PADDING + (currentTime / duration) * usableWidth;
+
+  // find the color index for each segment (stable by original order)
+  const segmentColorIndex = new Map<string, number>();
+  segments.forEach((seg, i) => segmentColorIndex.set(seg.id, i));
 
   return (
     <div className="timeline">
@@ -165,43 +164,74 @@ export default function Timeline({
           );
         })}
 
-        {/* Green selection region */}
-        <rect
-          x={selStartX}
-          y={18}
-          width={Math.max(0, selEndX - selStartX)}
-          height={54}
-          fill="rgba(0, 220, 100, 0.2)"
-          stroke="rgba(0, 220, 100, 0.6)"
-          strokeWidth={1.5}
-          rx={3}
-          style={{ cursor: "grab" }}
-          onMouseDown={(e) => handleMouseDown(e, "region")}
-        />
+        {/* Selection segments */}
+        {segments.map((seg) => {
+          const idx = segmentColorIndex.get(seg.id) ?? 0;
+          const palette = getSegmentColor(idx);
+          const isActive = seg.id === activeSegmentId;
+          const startX = PADDING + (seg.start / duration) * usableWidth;
+          const endX = PADDING + (seg.end / duration) * usableWidth;
 
-        {/* Left handle */}
-        <rect
-          x={selStartX - HANDLE_WIDTH / 2}
-          y={16}
-          width={HANDLE_WIDTH}
-          height={58}
-          rx={3}
-          fill="#00dc64"
-          style={{ cursor: "ew-resize" }}
-          onMouseDown={(e) => handleMouseDown(e, "start")}
-        />
+          return (
+            <g key={seg.id}>
+              {/* Region overlay */}
+              <rect
+                x={startX}
+                y={18}
+                width={Math.max(0, endX - startX)}
+                height={54}
+                fill={palette.dim}
+                stroke={palette.color}
+                strokeWidth={isActive ? 2 : 1}
+                strokeDasharray={isActive ? "none" : "4 2"}
+                rx={3}
+                style={{ cursor: "grab" }}
+                onMouseDown={(e) => handleMouseDown(e, seg.id, "region")}
+              />
 
-        {/* Right handle */}
-        <rect
-          x={selEndX - HANDLE_WIDTH / 2}
-          y={16}
-          width={HANDLE_WIDTH}
-          height={58}
-          rx={3}
-          fill="#00dc64"
-          style={{ cursor: "ew-resize" }}
-          onMouseDown={(e) => handleMouseDown(e, "end")}
-        />
+              {/* Left handle */}
+              <rect
+                x={startX - HANDLE_WIDTH / 2}
+                y={16}
+                width={HANDLE_WIDTH}
+                height={58}
+                rx={3}
+                fill={palette.color}
+                opacity={isActive ? 1 : 0.7}
+                style={{ cursor: "ew-resize" }}
+                onMouseDown={(e) => handleMouseDown(e, seg.id, "start")}
+              />
+
+              {/* Right handle */}
+              <rect
+                x={endX - HANDLE_WIDTH / 2}
+                y={16}
+                width={HANDLE_WIDTH}
+                height={58}
+                rx={3}
+                fill={palette.color}
+                opacity={isActive ? 1 : 0.7}
+                style={{ cursor: "ew-resize" }}
+                onMouseDown={(e) => handleMouseDown(e, seg.id, "end")}
+              />
+
+              {/* Segment label */}
+              {endX - startX > 30 && (
+                <text
+                  x={startX + (endX - startX) / 2}
+                  y={48}
+                  fill={palette.color}
+                  fontSize={9}
+                  fontWeight={600}
+                  textAnchor="middle"
+                  style={{ pointerEvents: "none" }}
+                >
+                  {seg.label}
+                </text>
+              )}
+            </g>
+          );
+        })}
 
         {/* Playhead */}
         <line
@@ -217,21 +247,34 @@ export default function Timeline({
           fill="#ff4444"
         />
 
-        {/* Time labels */}
+        {/* Time labels: endpoints */}
         <text x={PADDING} y={92} fill="#888" fontSize={10}>
           0:00
         </text>
         <text x={PADDING + usableWidth} y={92} fill="#888" fontSize={10} textAnchor="end">
           {Math.floor(duration / 60)}:{Math.floor(duration % 60).toString().padStart(2, "0")}
         </text>
-        <text x={selStartX} y={92} fill="#00dc64" fontSize={10} textAnchor="middle">
-          {Math.floor(selectionStart / 60)}:
-          {Math.floor(selectionStart % 60).toString().padStart(2, "0")}
-        </text>
-        <text x={selEndX} y={92} fill="#00dc64" fontSize={10} textAnchor="middle">
-          {Math.floor(selectionEnd / 60)}:
-          {Math.floor(selectionEnd % 60).toString().padStart(2, "0")}
-        </text>
+
+        {/* Active segment time labels */}
+        {segments
+          .filter((seg) => seg.id === activeSegmentId)
+          .map((seg) => {
+            const palette = getSegmentColor(segmentColorIndex.get(seg.id) ?? 0);
+            const sx = PADDING + (seg.start / duration) * usableWidth;
+            const ex = PADDING + (seg.end / duration) * usableWidth;
+            return (
+              <g key={`labels-${seg.id}`}>
+                <text x={sx} y={92} fill={palette.color} fontSize={10} textAnchor="middle">
+                  {Math.floor(seg.start / 60)}:
+                  {Math.floor(seg.start % 60).toString().padStart(2, "0")}
+                </text>
+                <text x={ex} y={92} fill={palette.color} fontSize={10} textAnchor="middle">
+                  {Math.floor(seg.end / 60)}:
+                  {Math.floor(seg.end % 60).toString().padStart(2, "0")}
+                </text>
+              </g>
+            );
+          })}
       </svg>
     </div>
   );

@@ -1,22 +1,36 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 
 /**
- * Hook to synchronize the video player's currentTime with the timeline
- * and other components. Provides a shared playback state.
+ * Hook to synchronize the video player's currentTime with the timeline.
+ * Constrains playback to the active selection region (in/out points).
  */
-export function useVideoSync() {
+export function useVideoSync(
+  selectionStart: number,
+  selectionEnd: number
+) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  // Update currentTime every animation frame for smooth sync
+  // Track selection bounds in a ref so the animation frame loop
+  // always sees the latest values without re-creating the effect.
+  const boundsRef = useRef({ start: selectionStart, end: selectionEnd });
+  boundsRef.current = { start: selectionStart, end: selectionEnd };
+
+  // Update currentTime every animation frame + clamp to selection
   useEffect(() => {
     let animationFrameId: number;
 
     const update = () => {
       const video = videoRef.current;
       if (video) {
+        // If playback has passed the out-point, pause and clamp
+        if (!video.paused && video.currentTime >= boundsRef.current.end) {
+          video.pause();
+          video.currentTime = boundsRef.current.end;
+        }
+
         setCurrentTime(video.currentTime);
         setIsPlaying(!video.paused);
       }
@@ -40,10 +54,20 @@ export function useVideoSync() {
     }
   }, []);
 
+  /**
+   * Play/pause — if the playhead is outside the selection or at the
+   * out-point, jump to the in-point before playing.
+   */
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
+
     if (video.paused) {
+      const { start, end } = boundsRef.current;
+      // If playhead is outside or at end of selection, snap to start
+      if (video.currentTime < start || video.currentTime >= end) {
+        video.currentTime = start;
+      }
       video.play();
     } else {
       video.pause();

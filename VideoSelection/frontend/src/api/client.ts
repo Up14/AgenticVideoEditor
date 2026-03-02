@@ -20,13 +20,19 @@ export interface ProcessResponse {
   language: string | null;
 }
 
-export interface ExportResponse {
+export interface SegmentExportResult {
+  label: string;
   clip_url: string;
   captions_url: string;
   start: number;
   end: number;
   duration: number;
   caption_count: number;
+}
+
+export interface MultiExportResponse {
+  segments: SegmentExportResult[];
+  total_segments: number;
 }
 
 /**
@@ -51,17 +57,16 @@ export async function processVideo(
 }
 
 /**
- * POST /api/export — Trim video + slice captions.
+ * POST /api/export/multi — Export multiple segments as separate files.
  */
-export async function exportClip(
+export async function exportMultipleClips(
   videoId: string,
-  start: number,
-  end: number
-): Promise<ExportResponse> {
-  const res = await fetch(`${API_BASE}/api/export`, {
+  segments: { label: string; start: number; end: number }[]
+): Promise<MultiExportResponse> {
+  const res = await fetch(`${API_BASE}/api/export/multi`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ video_id: videoId, start, end }),
+    body: JSON.stringify({ video_id: videoId, segments }),
   });
 
   if (!res.ok) {

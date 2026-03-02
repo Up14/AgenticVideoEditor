@@ -15,11 +15,24 @@ class ProcessRequest(BaseModel):
 
 
 class ExportRequest(BaseModel):
-    """Request body for exporting a trimmed clip."""
+    """Request body for exporting a trimmed clip (single segment)."""
     video_id: str
     start: float  # seconds
     end: float    # seconds
     format: str = "mp4"
+
+
+class SegmentInput(BaseModel):
+    """A single segment to export."""
+    label: str
+    start: float
+    end: float
+
+
+class MultiExportRequest(BaseModel):
+    """Request body for exporting multiple segments."""
+    video_id: str
+    segments: List[SegmentInput]
 
 
 # ── Caption Models ──
@@ -55,10 +68,27 @@ class ProcessResponse(BaseModel):
 # ── Export Response ──
 
 class ExportResponse(BaseModel):
-    """Response after exporting a trimmed clip."""
+    """Response after exporting a trimmed clip (single segment)."""
     clip_url: str
     captions_url: str
     start: float
     end: float
     duration: float
     caption_count: int
+
+
+class SegmentExportResult(BaseModel):
+    """Result for a single exported segment."""
+    label: str
+    clip_url: str
+    captions_url: str
+    start: float
+    end: float
+    duration: float
+    caption_count: int
+
+
+class MultiExportResponse(BaseModel):
+    """Response after exporting multiple segments."""
+    segments: List[SegmentExportResult]
+    total_segments: int

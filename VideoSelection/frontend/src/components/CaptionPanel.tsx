@@ -1,61 +1,66 @@
 import { useRef, useEffect } from "react";
 import type { Caption } from "../api/client";
+import type { Segment } from "../types";
+import { getSegmentColor, formatTimePrecise } from "../types";
 
 interface Props {
   captions: Caption[];
-  selectedCaptions: Caption[];
+  segments: Segment[];
   activeCaption: Caption | null;
   activeCaptionIndex: number;
-  selectionStart: number;
-  selectionEnd: number;
   onSeek: (time: number) => void;
 }
 
 /**
- * Formats seconds to MM:SS.s display.
- */
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = (seconds % 60).toFixed(1);
-  return `${m}:${parseFloat(s) < 10 ? "0" : ""}${s}`;
-}
-
-/**
- * Caption panel with two sections:
- * 1. Full timeline captions (scrolls to active)
- * 2. Selected region captions (green highlight)
+ * Single caption list — captions are color-coded by the segment they belong to.
+ * If a caption falls in multiple segments, the first matching segment's color wins.
  */
 export default function CaptionPanel({
   captions,
-  selectedCaptions,
+  segments,
   activeCaption,
   activeCaptionIndex,
-  selectionStart,
-  selectionEnd,
   onSeek,
 }: Props) {
-  const fullListRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to active caption
+  // Auto-scroll within the caption list only (never scrolls the page)
   useEffect(() => {
-    if (activeCaptionIndex >= 0 && fullListRef.current) {
-      const activeEl = fullListRef.current.querySelector(
+    if (activeCaptionIndex >= 0 && listRef.current) {
+      const activeEl = listRef.current.querySelector(
         `[data-caption-index="${activeCaptionIndex}"]`
-      );
-      activeEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+      ) as HTMLElement | null;
+      if (activeEl) {
+        const container = listRef.current;
+        const elTop = activeEl.offsetTop - container.offsetTop;
+        const elCenter = elTop - container.clientHeight / 2 + activeEl.clientHeight / 2;
+        container.scrollTo({ top: elCenter, behavior: "smooth" });
+      }
     }
   }, [activeCaptionIndex]);
 
+  /**
+   * Find the segment color for a caption. Returns the first matching
+   * segment's color, or null if the caption isn't in any segment.
+   */
+  const getColorForCaption = (cap: Caption): string | null => {
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      if (cap.end > seg.start && cap.start < seg.end) {
+        return getSegmentColor(i).color;
+      }
+    }
+    return null;
+  };
+
   return (
-    <div className="caption-panel">
-      {/* Section 1: Full captions */}
+    <div className="caption-panel caption-panel--single">
       <div className="caption-panel__section">
         <h3>📄 Video Captions</h3>
-        <div className="caption-panel__list" ref={fullListRef}>
+        <div className="caption-panel__list" ref={listRef}>
           {captions.map((cap, i) => {
             const isActive = activeCaption === cap;
-            const isInSelection =
-              cap.end > selectionStart && cap.start < selectionEnd;
+            const segColor = getColorForCaption(cap);
 
             return (
               <div
@@ -64,47 +69,25 @@ export default function CaptionPanel({
                 className={[
                   "caption-item",
                   isActive ? "caption-item--active" : "",
-                  isInSelection ? "caption-item--in-selection" : "",
+                  segColor ? "caption-item--in-segment" : "",
                 ].join(" ")}
+                style={{
+                  borderLeftColor: isActive
+                    ? "#ffffff"
+                    : segColor ?? "transparent",
+                  backgroundColor: segColor
+                    ? isActive ? `${segColor}30` : `${segColor}10`
+                    : isActive ? "rgba(255,255,255,0.08)" : undefined,
+                }}
                 onClick={() => onSeek(cap.start)}
               >
                 <span className="caption-item__time">
-                  {formatTime(cap.start)}
+                  {formatTimePrecise(cap.start)}
                 </span>
                 <span className="caption-item__text">{cap.text}</span>
               </div>
             );
           })}
-        </div>
-      </div>
-
-      {/* Section 2: Selected region captions */}
-      <div className="caption-panel__section caption-panel__section--selected">
-        <h3>
-          🟢 Selected Clip Captions
-          <span className="caption-count">
-            ({selectedCaptions.length} segments)
-          </span>
-        </h3>
-        <div className="caption-panel__list">
-          {selectedCaptions.length === 0 ? (
-            <div className="caption-empty">
-              No captions in selected region
-            </div>
-          ) : (
-            selectedCaptions.map((cap, i) => (
-              <div
-                key={i}
-                className="caption-item caption-item--selected"
-                onClick={() => onSeek(cap.start)}
-              >
-                <span className="caption-item__time">
-                  {formatTime(cap.start)}
-                </span>
-                <span className="caption-item__text">{cap.text}</span>
-              </div>
-            ))
-          )}
         </div>
       </div>
     </div>

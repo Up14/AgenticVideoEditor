@@ -1,88 +1,155 @@
+import type { Segment } from "../types";
+import { getSegmentColor, formatTime } from "../types";
+
 interface Props {
-  selectionStart: number;
-  selectionEnd: number;
+  segments: Segment[];
+  activeSegmentId: string | null;
   duration: number;
-  onSelectionChange: (start: number, end: number) => void;
+  onSegmentChange: (id: string, start: number, end: number) => void;
+  onAddSegment: () => void;
+  onRemoveSegment: (id: string) => void;
+  onSelectSegment: (id: string) => void;
   onExport: () => void;
-  onSeekToSelection: () => void;
+  onSeekToSegment: (id: string) => void;
   isExporting: boolean;
 }
 
 /**
- * Formats seconds to MM:SS display.
- */
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
-/**
- * Toolbar for controlling the green selection region.
- * Provides nudge buttons, in/out point display, and export.
+ * Toolbar for managing multiple segments: add/remove, select active,
+ * nudge in/out points, and export all segments.
  */
 export default function Toolbar({
-  selectionStart,
-  selectionEnd,
+  segments,
+  activeSegmentId,
   duration,
-  onSelectionChange,
+  onSegmentChange,
+  onAddSegment,
+  onRemoveSegment,
+  onSelectSegment,
   onExport,
-  onSeekToSelection,
+  onSeekToSegment,
   isExporting,
 }: Props) {
+  const activeSeg = segments.find((s) => s.id === activeSegmentId);
+  const activeIdx = segments.findIndex((s) => s.id === activeSegmentId);
+  const palette = activeIdx >= 0 ? getSegmentColor(activeIdx) : null;
+
   const nudge = (target: "start" | "end", delta: number) => {
+    if (!activeSeg) return;
     if (target === "start") {
-      const newStart = Math.max(0, Math.min(selectionStart + delta, selectionEnd - 1));
-      onSelectionChange(newStart, selectionEnd);
+      const newStart = Math.max(0, Math.min(activeSeg.start + delta, activeSeg.end - 1));
+      onSegmentChange(activeSeg.id, newStart, activeSeg.end);
     } else {
-      const newEnd = Math.min(duration, Math.max(selectionEnd + delta, selectionStart + 1));
-      onSelectionChange(selectionStart, newEnd);
+      const newEnd = Math.min(duration, Math.max(activeSeg.end + delta, activeSeg.start + 1));
+      onSegmentChange(activeSeg.id, activeSeg.start, newEnd);
     }
   };
 
-  const clipDuration = selectionEnd - selectionStart;
+  const totalDuration = segments.reduce((sum, s) => sum + (s.end - s.start), 0);
 
   return (
-    <div className="toolbar">
-      <div className="toolbar__group">
-        <span className="toolbar__label">In Point</span>
-        <button onClick={() => nudge("start", -1)} title="Move in point 1s earlier">
-          ◀
-        </button>
-        <span className="toolbar__time">{formatTime(selectionStart)}</span>
-        <button onClick={() => nudge("start", 1)} title="Move in point 1s later">
-          ▶
-        </button>
+    <div className="toolbar toolbar--multi">
+      {/* Segment chips at the top */}
+      <div className="toolbar__segments-row">
+        <span className="toolbar__label">Segments</span>
+        <div className="toolbar__chips">
+          {segments.map((seg, i) => {
+            const p = getSegmentColor(i);
+            const isActive = seg.id === activeSegmentId;
+            return (
+              <button
+                key={seg.id}
+                className={`segment-chip ${isActive ? "segment-chip--active" : ""}`}
+                style={{
+                  borderColor: p.color,
+                  background: isActive ? p.dim : "transparent",
+                  color: p.color,
+                }}
+                onClick={() => onSelectSegment(seg.id)}
+                title={`Select ${seg.label}`}
+              >
+                <span className="segment-chip__dot" style={{ background: p.color }} />
+                {seg.label}
+                <span className="segment-chip__range">
+                  {formatTime(seg.start)}-{formatTime(seg.end)}
+                </span>
+                {segments.length > 1 && (
+                  <span
+                    className="segment-chip__remove"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveSegment(seg.id);
+                    }}
+                    title={`Remove ${seg.label}`}
+                  >
+                    ✕
+                  </span>
+                )}
+              </button>
+            );
+          })}
+          <button
+            className="segment-chip segment-chip--add"
+            onClick={onAddSegment}
+            title="Add new segment"
+          >
+            + Add
+          </button>
+        </div>
       </div>
 
-      <div className="toolbar__group">
-        <span className="toolbar__label">Out Point</span>
-        <button onClick={() => nudge("end", -1)} title="Move out point 1s earlier">
-          ◀
-        </button>
-        <span className="toolbar__time">{formatTime(selectionEnd)}</span>
-        <button onClick={() => nudge("end", 1)} title="Move out point 1s later">
-          ▶
-        </button>
-      </div>
+      {/* Active segment controls */}
+      {activeSeg && palette && (
+        <div className="toolbar__controls-row">
+          <div className="toolbar__group">
+            <span className="toolbar__label">In Point</span>
+            <button onClick={() => nudge("start", -1)} title="Move in -1s">◀</button>
+            <span className="toolbar__time" style={{ color: palette.color, background: `${palette.color}20` }}>
+              {formatTime(activeSeg.start)}
+            </span>
+            <button onClick={() => nudge("start", 1)} title="Move in +1s">▶</button>
+          </div>
 
-      <div className="toolbar__group">
-        <span className="toolbar__label">Duration</span>
-        <span className="toolbar__duration">{formatTime(clipDuration)}</span>
-      </div>
+          <div className="toolbar__group">
+            <span className="toolbar__label">Out Point</span>
+            <button onClick={() => nudge("end", -1)} title="Move out -1s">◀</button>
+            <span className="toolbar__time" style={{ color: palette.color, background: `${palette.color}20` }}>
+              {formatTime(activeSeg.end)}
+            </span>
+            <button onClick={() => nudge("end", 1)} title="Move out +1s">▶</button>
+          </div>
 
-      <div className="toolbar__actions">
-        <button className="btn-secondary" onClick={onSeekToSelection}>
-          ⏭ Jump to Selection
-        </button>
-        <button
-          className="btn-primary"
-          onClick={onExport}
-          disabled={isExporting || clipDuration < 1}
-        >
-          {isExporting ? "⏳ Exporting..." : "✂️ Export Clip"}
-        </button>
-      </div>
+          <div className="toolbar__group">
+            <span className="toolbar__label">Clip</span>
+            <span className="toolbar__duration">
+              {formatTime(activeSeg.end - activeSeg.start)}
+            </span>
+          </div>
+
+          <div className="toolbar__group">
+            <span className="toolbar__label">Total</span>
+            <span className="toolbar__duration">
+              {formatTime(totalDuration)}
+            </span>
+          </div>
+
+          <div className="toolbar__actions">
+            <button
+              className="btn-secondary"
+              onClick={() => onSeekToSegment(activeSeg.id)}
+            >
+              ⏭ Jump
+            </button>
+            <button
+              className="btn-primary"
+              onClick={onExport}
+              disabled={isExporting || segments.length === 0}
+            >
+              {isExporting ? "⏳ Exporting..." : `✂️ Export ${segments.length > 1 ? `All (${segments.length})` : "Clip"}`}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

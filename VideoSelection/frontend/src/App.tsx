@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import URLInput from "./components/URLInput";
 import VideoPlayer from "./components/VideoPlayer";
 import Timeline from "./components/Timeline";
@@ -8,16 +8,24 @@ import { useVideoSync } from "./hooks/useVideoSync";
 import { useCaptions } from "./hooks/useCaptions";
 import {
   processVideo,
-  exportClip,
+  exportMultipleClips,
   getVideoStreamUrl,
   getDownloadUrl,
   type Caption,
   type ProcessResponse,
+  type SegmentExportResult,
 } from "./api/client";
+import type { Segment } from "./types";
+import {
+  generateId,
+  getSegmentColor,
+  mergeOverlappingSegments,
+  formatTime,
+} from "./types";
 import "./App.css";
 
 /**
- * Main application — orchestrates all components and manages shared state.
+ * Main application — orchestrates all components with multi-segment support.
  */
 export default function App() {
   // ── Processing State ──
@@ -25,7 +33,17 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [videoData, setVideoData] = useState<ProcessResponse | null>(null);
 
-  // ── Video Sync ──
+  // ── Segment State ──
+  const [segments, setSegments] = useState<Segment[]>([]);
+  const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null);
+
+  // Get the active segment's bounds for playback constraint
+  const activeSegment = useMemo(
+    () => segments.find((s) => s.id === activeSegmentId) ?? null,
+    [segments, activeSegmentId]
+  );
+
+  // ── Video Sync (constrained to active segment) ──
   const {
     videoRef,
     currentTime,
@@ -34,26 +52,19 @@ export default function App() {
     seekTo,
     togglePlay,
     handleLoadedMetadata,
-  } = useVideoSync();
-
-  // ── Selection State ──
-  const [selectionStart, setSelectionStart] = useState(0);
-  const [selectionEnd, setSelectionEnd] = useState(0);
+  } = useVideoSync(activeSegment?.start ?? 0, activeSegment?.end ?? 0);
 
   // ── Export State ──
   const [isExporting, setIsExporting] = useState(false);
-  const [exportResult, setExportResult] = useState<{
-    clipUrl: string;
-    captionsUrl: string;
-  } | null>(null);
+  const [exportResults, setExportResults] = useState<SegmentExportResult[] | null>(null);
 
   // ── Captions ──
   const captions: Caption[] = videoData?.captions ?? [];
-  const { activeCaption, activeCaptionIndex, selectedCaptions } = useCaptions(
+  const { activeCaption, activeCaptionIndex } = useCaptions(
     captions,
     currentTime,
-    selectionStart,
-    selectionEnd
+    activeSegment?.start ?? 0,
+    activeSegment?.end ?? 0
   );
 
   // ── Handlers ──
@@ -62,16 +73,24 @@ export default function App() {
     setIsLoading(true);
     setError(null);
     setVideoData(null);
-    setExportResult(null);
+    setExportResults(null);
+    setSegments([]);
+    setActiveSegmentId(null);
 
     try {
       const data = await processVideo(url, quality);
       setVideoData(data);
 
-      // Default selection: first 30 seconds or full video if shorter
-      const defaultEnd = Math.min(30, data.duration);
-      setSelectionStart(0);
-      setSelectionEnd(defaultEnd);
+      // Create initial segment: first 30 seconds
+      const firstSeg: Segment = {
+        id: generateId(),
+        start: 0,
+        end: Math.min(30, data.duration),
+        color: getSegmentColor(0).color,
+        label: "Clip 1",
+      };
+      setSegments([firstSeg]);
+      setActiveSegmentId(firstSeg.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to process video");
     } finally {
@@ -79,41 +98,101 @@ export default function App() {
     }
   }, []);
 
-  const handleSelectionChange = useCallback(
-    (start: number, end: number) => {
-      setSelectionStart(start);
-      setSelectionEnd(end);
-      setExportResult(null); // Clear old export when selection changes
+  const handleSegmentChange = useCallback(
+    (id: string, start: number, end: number) => {
+      setSegments((prev) => {
+        const updated = prev.map((seg) =>
+          seg.id === id ? { ...seg, start, end } : seg
+        );
+        // Merge overlapping segments
+        return mergeOverlappingSegments(updated);
+      });
+      setExportResults(null);
     },
     []
   );
 
-  const handleExport = useCallback(async () => {
+  const handleAddSegment = useCallback(() => {
     if (!videoData) return;
+
+    setSegments((prev) => {
+      const idx = prev.length;
+      // Place new segment after the last one, or at the end of video
+      const lastEnd = prev.length > 0 ? prev[prev.length - 1].end : 0;
+      const newStart = Math.min(lastEnd + 5, videoData.duration - 10);
+      const newEnd = Math.min(newStart + 30, videoData.duration);
+
+      if (newEnd - newStart < 1) return prev; // not enough room
+
+      const newSeg: Segment = {
+        id: generateId(),
+        start: newStart,
+        end: newEnd,
+        color: getSegmentColor(idx).color,
+        label: `Clip ${idx + 1}`,
+      };
+
+      const updated = [...prev, newSeg];
+      setActiveSegmentId(newSeg.id);
+      return mergeOverlappingSegments(updated);
+    });
+    setExportResults(null);
+  }, [videoData]);
+
+  const handleRemoveSegment = useCallback(
+    (id: string) => {
+      setSegments((prev) => {
+        const filtered = prev.filter((s) => s.id !== id);
+        // Re-label remaining segments
+        return filtered.map((seg, i) => ({
+          ...seg,
+          label: `Clip ${i + 1}`,
+          color: getSegmentColor(i).color,
+        }));
+      });
+
+      // If we removed the active segment, select the first remaining one
+      if (activeSegmentId === id) {
+        setSegments((prev) => {
+          if (prev.length > 0) setActiveSegmentId(prev[0].id);
+          else setActiveSegmentId(null);
+          return prev;
+        });
+      }
+      setExportResults(null);
+    },
+    [activeSegmentId]
+  );
+
+  const handleExport = useCallback(async () => {
+    if (!videoData || segments.length === 0) return;
 
     setIsExporting(true);
     setError(null);
 
     try {
-      const result = await exportClip(
+      const result = await exportMultipleClips(
         videoData.video_id,
-        selectionStart,
-        selectionEnd
+        segments.map((s) => ({ label: s.label, start: s.start, end: s.end }))
       );
-      setExportResult({
-        clipUrl: getDownloadUrl(result.clip_url),
-        captionsUrl: getDownloadUrl(result.captions_url),
-      });
+      setExportResults(result.segments);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Export failed");
     } finally {
       setIsExporting(false);
     }
-  }, [videoData, selectionStart, selectionEnd]);
+  }, [videoData, segments]);
 
-  const handleSeekToSelection = useCallback(() => {
-    seekTo(selectionStart);
-  }, [seekTo, selectionStart]);
+  const handleSeekToSegment = useCallback(
+    (id: string) => {
+      const seg = segments.find((s) => s.id === id);
+      if (seg) {
+        setActiveSegmentId(id);
+        seekTo(seg.start);
+      }
+    },
+    [segments, seekTo]
+  );
 
   // ── Keyboard Shortcuts ──
   const handleKeyDown = useCallback(
@@ -127,11 +206,17 @@ export default function App() {
           break;
         case "i":
         case "I":
-          handleSelectionChange(currentTime, selectionEnd);
+          if (activeSegmentId) {
+            const seg = segments.find((s) => s.id === activeSegmentId);
+            if (seg) handleSegmentChange(activeSegmentId, currentTime, seg.end);
+          }
           break;
         case "o":
         case "O":
-          handleSelectionChange(selectionStart, currentTime);
+          if (activeSegmentId) {
+            const seg = segments.find((s) => s.id === activeSegmentId);
+            if (seg) handleSegmentChange(activeSegmentId, seg.start, currentTime);
+          }
           break;
         case "ArrowLeft":
           seekTo(Math.max(0, currentTime - 5));
@@ -139,17 +224,22 @@ export default function App() {
         case "ArrowRight":
           seekTo(Math.min(duration, currentTime + 5));
           break;
+        case "n":
+        case "N":
+          handleAddSegment();
+          break;
       }
     },
     [
       videoData,
       togglePlay,
       currentTime,
-      selectionStart,
-      selectionEnd,
+      activeSegmentId,
+      segments,
       duration,
       seekTo,
-      handleSelectionChange,
+      handleSegmentChange,
+      handleAddSegment,
     ]
   );
 
@@ -161,7 +251,7 @@ export default function App() {
       <header className="app__header">
         <h1>🎬 Video Selection Tool</h1>
         <span className="app__subtitle">
-          Load a YouTube video, select a clip, export with captions
+          Load a YouTube video, select multiple clips, export with captions
         </span>
       </header>
 
@@ -206,42 +296,50 @@ export default function App() {
             duration={duration}
             currentTime={currentTime}
             captions={captions}
-            selectionStart={selectionStart}
-            selectionEnd={selectionEnd}
-            onSelectionChange={handleSelectionChange}
+            segments={segments}
+            activeSegmentId={activeSegmentId}
+            onSegmentChange={handleSegmentChange}
+            onSegmentSelect={setActiveSegmentId}
             onSeek={seekTo}
           />
 
           {/* Toolbar */}
           <Toolbar
-            selectionStart={selectionStart}
-            selectionEnd={selectionEnd}
+            segments={segments}
+            activeSegmentId={activeSegmentId}
             duration={duration}
-            onSelectionChange={handleSelectionChange}
+            onSegmentChange={handleSegmentChange}
+            onAddSegment={handleAddSegment}
+            onRemoveSegment={handleRemoveSegment}
+            onSelectSegment={setActiveSegmentId}
             onExport={handleExport}
-            onSeekToSelection={handleSeekToSelection}
+            onSeekToSegment={handleSeekToSegment}
             isExporting={isExporting}
           />
 
-          {/* Export Result */}
-          {exportResult && (
+          {/* Export Results */}
+          {exportResults && (
             <div className="export-result">
-              <h3>✅ Clip Exported!</h3>
-              <div className="export-result__links">
-                <a
-                  href={exportResult.clipUrl}
-                  download
-                  className="btn-download"
-                >
-                  ⬇️ Download Video Clip
-                </a>
-                <a
-                  href={exportResult.captionsUrl}
-                  download
-                  className="btn-download"
-                >
-                  📄 Download Captions JSON
-                </a>
+              <h3>✅ {exportResults.length} Clip{exportResults.length > 1 ? "s" : ""} Exported!</h3>
+              <div className="export-result__grid">
+                {exportResults.map((result, i) => {
+                  const palette = getSegmentColor(i);
+                  return (
+                    <div key={i} className="export-result__item" style={{ borderLeftColor: palette.color }}>
+                      <div className="export-result__label" style={{ color: palette.color }}>
+                        {result.label} ({formatTime(result.start)} → {formatTime(result.end)})
+                      </div>
+                      <div className="export-result__links">
+                        <a href={getDownloadUrl(result.clip_url)} download className="btn-download">
+                          ⬇️ Video
+                        </a>
+                        <a href={getDownloadUrl(result.captions_url)} download className="btn-download btn-download--secondary">
+                          📄 Captions
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -249,18 +347,16 @@ export default function App() {
           {/* Caption Panel */}
           <CaptionPanel
             captions={captions}
-            selectedCaptions={selectedCaptions}
+            segments={segments}
             activeCaption={activeCaption}
             activeCaptionIndex={activeCaptionIndex}
-            selectionStart={selectionStart}
-            selectionEnd={selectionEnd}
             onSeek={seekTo}
           />
 
           {/* Keyboard Shortcuts Help */}
           <div className="shortcuts-hint">
-            <b>Shortcuts:</b> Space = Play/Pause · I = Set In Point · O = Set
-            Out Point · ← → = Seek ±5s
+            <b>Shortcuts:</b> Space = Play/Pause · I = Set In · O = Set
+            Out · N = New Segment · ← → = Seek ±5s
           </div>
         </div>
       )}

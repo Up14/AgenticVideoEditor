@@ -22,7 +22,7 @@ def seconds_to_timestamp(seconds: float) -> str:
     return f"{h:02d}:{m:02d}:{s:06.3f}"
 
 
-def trim_video(video_id: str, start: float, end: float) -> str:
+def trim_video(video_id: str, start: float, end: float, suffix: str = "") -> str:
     """
     Trims a video using ffmpeg.
 
@@ -30,6 +30,7 @@ def trim_video(video_id: str, start: float, end: float) -> str:
         video_id: ID of the source video.
         start: Start time in seconds.
         end: End time in seconds.
+        suffix: Optional suffix for the output filename (e.g., '_seg1').
 
     Returns:
         Path to the trimmed clip file.
@@ -46,7 +47,7 @@ def trim_video(video_id: str, start: float, end: float) -> str:
     clips_dir = os.path.join(MEDIA_DIR, video_id, "clips")
     os.makedirs(clips_dir, exist_ok=True)
 
-    clip_filename = f"clip_{start:.1f}_{end:.1f}.mp4"
+    clip_filename = f"clip_{start:.1f}_{end:.1f}{suffix}.mp4"
     clip_path = os.path.join(clips_dir, clip_filename)
 
     # If clip already exists, return it
@@ -114,12 +115,13 @@ def save_trimmed_captions(
     captions: List[Dict],
     start: float,
     end: float,
+    suffix: str = "",
 ) -> str:
     """Saves trimmed captions as a JSON file and returns the path."""
     clips_dir = os.path.join(MEDIA_DIR, video_id, "clips")
     os.makedirs(clips_dir, exist_ok=True)
 
-    filename = f"captions_{start:.1f}_{end:.1f}.json"
+    filename = f"captions_{start:.1f}_{end:.1f}{suffix}.json"
     path = os.path.join(clips_dir, filename)
 
     with open(path, "w", encoding="utf-8") as f:
