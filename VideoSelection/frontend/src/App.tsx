@@ -9,6 +9,8 @@ import { useCaptions } from "./hooks/useCaptions";
 import {
   processVideo,
   exportMultipleClips,
+  analyzeClips,
+  exportClipsCSV,
   getVideoStreamUrl,
   getDownloadUrl,
   type Caption,
@@ -58,6 +60,10 @@ export default function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportResults, setExportResults] = useState<SegmentExportResult[] | null>(null);
 
+  // ── Clip Selector State ──
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isCsvExporting, setIsCsvExporting] = useState(false);
+
   // ── Captions ──
   const captions: Caption[] = videoData?.captions ?? [];
   const { activeCaption, activeCaptionIndex } = useCaptions(
@@ -81,7 +87,7 @@ export default function App() {
       const data = await processVideo(url, quality);
       setVideoData(data);
 
-      // Create initial segment: first 30 seconds
+      // Create initial segment while AI analysis runs
       const firstSeg: Segment = {
         id: generateId(),
         start: 0,
@@ -91,6 +97,28 @@ export default function App() {
       };
       setSegments([firstSeg]);
       setActiveSegmentId(firstSeg.id);
+
+      // Auto-run AI clip analysis — replaces segments once done
+      setIsAnalyzing(true);
+      try {
+        const clipData = await analyzeClips(data.video_id);
+        if (clipData.clips.length > 0) {
+          const aiSegments: Segment[] = clipData.clips.map((clip, i) => ({
+            id: generateId(),
+            start: clip.start,
+            end: clip.end,
+            color: getSegmentColor(i).color,
+            label: clip.title || `Clip ${i + 1}`,
+          }));
+          setSegments(aiSegments);
+          setActiveSegmentId(aiSegments[0].id);
+        }
+      } catch {
+        // AI analysis failed — keep the initial segment, don't block the user
+        console.warn("AI clip analysis failed — using default segment.");
+      } finally {
+        setIsAnalyzing(false);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to process video");
     } finally {
@@ -183,6 +211,27 @@ export default function App() {
     }
   }, [videoData, segments]);
 
+  const handleDownloadCsv = useCallback(async () => {
+    if (!videoData || segments.length === 0) return;
+    setIsCsvExporting(true);
+    try {
+      const blob = await exportClipsCSV(
+        videoData.video_id,
+        segments.map((s) => ({ label: s.label, start: s.start, end: s.end }))
+      );
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `clips_${videoData.video_id}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "CSV export failed");
+    } finally {
+      setIsCsvExporting(false);
+    }
+  }, [videoData, segments]);
+
   const handleSeekToSegment = useCallback(
     (id: string) => {
       const seg = segments.find((s) => s.id === id);
@@ -267,6 +316,15 @@ export default function App() {
         </div>
       )}
 
+      {/* AI Analysis Banner */}
+      {isAnalyzing && (
+        <div className="loading-overlay">
+          <div className="loading-spinner" />
+          <p>🤖 AI is finding the best viral clips...</p>
+          <p className="loading-hint">Analysing transcript, scoring hooks &amp; emotions</p>
+        </div>
+      )}
+
       {/* Error */}
       {error && (
         <div className="error-banner">
@@ -316,6 +374,20 @@ export default function App() {
             onSeekToSegment={handleSeekToSegment}
             isExporting={isExporting}
           />
+
+          {/* Download CSV button */}
+          {segments.length > 0 && (
+            <div style={{ display: "flex", justifyContent: "flex-end", margin: "8px 0" }}>
+              <button
+                className="btn-secondary"
+                onClick={handleDownloadCsv}
+                disabled={isCsvExporting}
+                title="Download timestamps + captions as CSV"
+              >
+                {isCsvExporting ? "⏳ Preparing CSV..." : "📄 Download CSV"}
+              </button>
+            </div>
+          )}
 
           {/* Export Results */}
           {exportResults && (

@@ -15,6 +15,8 @@ from typing import Optional, Dict, Any
 
 import yt_dlp
 
+from services.cookie_service import get_smart_cookie_opts, cleanup_shadow_profile
+
 logger = logging.getLogger(__name__)
 
 # Base directory for all downloaded media
@@ -50,6 +52,7 @@ def download_video(url: str, quality: int = 720) -> Dict[str, Any]:
     output_template = os.path.join(video_dir, "video.%(ext)s")
 
     ffmpeg_available = _has_ffmpeg()
+    cookie_opts = get_smart_cookie_opts()
 
     if ffmpeg_available:
         # Merge best separate streams (requires ffmpeg)
@@ -62,8 +65,10 @@ def download_video(url: str, quality: int = 720) -> Dict[str, Any]:
             "force_overwrites": True,
             "quiet": True,
             "no_warnings": True,
+            **cookie_opts,
         }
-        logger.info("Downloading video (merge mode, ffmpeg available): %s (quality=%dp)", url, quality)
+        logger.info("Downloading video (merge mode): %s (quality=%dp, cookies=%s)", 
+                    url, quality, "shadow_profile" if "shadow_" in str(cookie_opts) else ("yes" if cookie_opts else "no"))
     else:
         # Download single progressive stream — no ffmpeg needed
         fmt = f"best[height<={quality}][ext=mp4]/best[ext=mp4]/best[height<={quality}]/best"
@@ -74,11 +79,16 @@ def download_video(url: str, quality: int = 720) -> Dict[str, Any]:
             "force_overwrites": True,
             "quiet": True,
             "no_warnings": True,
+            **cookie_opts,
         }
-        logger.info("Downloading video (single-stream mode, ffmpeg NOT found): %s (quality=%dp)", url, quality)
+        logger.info("Downloading video (single-stream mode): %s (quality=%dp, cookies=%s)", 
+                    url, quality, "shadow_profile" if "shadow_" in str(cookie_opts) else ("yes" if cookie_opts else "no"))
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+    finally:
+        cleanup_shadow_profile(ydl_opts)
 
     title = info.get("title", "Untitled")
     duration = info.get("duration", 0)

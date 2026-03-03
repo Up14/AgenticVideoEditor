@@ -2,7 +2,7 @@
  * API client — communicates with the FastAPI backend.
  */
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = "http://127.0.0.1:8000";
 
 export interface Caption {
   start: number;
@@ -33,6 +33,29 @@ export interface SegmentExportResult {
 export interface MultiExportResponse {
   segments: SegmentExportResult[];
   total_segments: number;
+}
+
+export interface RankedClip {
+  title: string;
+  hook_reason: string;
+  start: number;
+  end: number;
+  duration: number;
+  start_timestamp: string;
+  end_timestamp: string;
+  text: string;
+  final_score: number;
+  ai_viral_score: number;
+  standalone_understanding: number;
+  resolution_score: number;
+  context_dependency: number;
+  local_score: number;
+}
+
+export interface ClipSelectorResponse {
+  video_id: string;
+  total_clips: number;
+  clips: RankedClip[];
 }
 
 /**
@@ -89,4 +112,43 @@ export function getVideoStreamUrl(videoId: string): string {
  */
 export function getDownloadUrl(relativePath: string): string {
   return `${API_BASE}${relativePath}`;
+}
+
+/**
+ * POST /api/clip-selector/analyze/{videoId}
+ * Runs the full AI clip selection pipeline and returns ranked clips.
+ */
+export async function analyzeClips(videoId: string): Promise<ClipSelectorResponse> {
+  const res = await fetch(`${API_BASE}/api/clip-selector/analyze/${videoId}`, {
+    method: "POST",
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Unknown error" }));
+    throw new Error(err.detail || `HTTP ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * GET /api/clip-selector/export-csv/{videoId}
+ * Returns a CSV Blob with clip timestamps + caption text.
+ * 'segments' are the user's FINAL (possibly edited) clip boundaries.
+ */
+export async function exportClipsCSV(
+  videoId: string,
+  segments: { label: string; start: number; end: number }[]
+): Promise<Blob> {
+  const encoded = encodeURIComponent(JSON.stringify(segments));
+  const res = await fetch(
+    `${API_BASE}/api/clip-selector/export-csv/${videoId}?segments=${encoded}`
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Unknown error" }));
+    throw new Error(err.detail || `HTTP ${res.status}`);
+  }
+
+  return res.blob();
 }
