@@ -7,6 +7,7 @@ Serves:
 - /api/captions/{id} — Get parsed captions
 - /api/export      — Trim video + slice captions
 - /api/download/*  — Serve trimmed clips and captions
+- /api/clip-selector/* — AI viral clip detection (see clip_selector/ package)
 """
 
 import logging
@@ -14,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from routers import process, video, captions, export
+from clip_selector.router import router as clip_selector_router
 
 # ── Logging ──
 logging.basicConfig(
@@ -32,7 +34,7 @@ app = FastAPI(
 # ── CORS — allow the Vite dev server ──
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -43,6 +45,7 @@ app.include_router(process.router)
 app.include_router(video.router)
 app.include_router(captions.router)
 app.include_router(export.router)
+app.include_router(clip_selector_router)
 
 
 @app.get("/")
