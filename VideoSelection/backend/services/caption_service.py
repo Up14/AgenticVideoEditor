@@ -16,6 +16,8 @@ from typing import List, Dict, Any, Optional
 
 import yt_dlp
 
+from services.cookie_service import get_smart_cookie_opts, cleanup_shadow_profile
+
 logger = logging.getLogger(__name__)
 
 MEDIA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "media")
@@ -191,6 +193,19 @@ def _find_english_track(metadata: Dict) -> Optional[Dict]:
     return None
 
 
+def _get_cookie_opts() -> Dict[str, Any]:
+    """Returns yt-dlp cookie options from environment variables."""
+    opts = {}
+    cookie_path = os.getenv("YOUTUBE_COOKIES_PATH")
+    cookie_browser = os.getenv("YOUTUBE_COOKIES_BROWSER")
+
+    if cookie_path and os.path.exists(cookie_path):
+        opts["cookiefile"] = cookie_path
+    elif cookie_browser:
+        opts["cookiesfrombrowser"] = (cookie_browser,)
+    return opts
+
+
 # ── Public API ──
 
 def extract_captions(url: str, video_id: str) -> Dict[str, Any]:
@@ -208,28 +223,32 @@ def extract_captions(url: str, video_id: str) -> Dict[str, Any]:
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
+        **get_smart_cookie_opts(),
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        metadata = ydl.extract_info(url, download=False)
-        track = _find_english_track(metadata)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            metadata = ydl.extract_info(url, download=False)
+            track = _find_english_track(metadata)
 
-        if not track:
-            logger.warning("No English captions found for %s", url)
-            return {"captions": [], "source": None, "language": None}
+            if not track:
+                logger.warning("No English captions found for %s", url)
+                return {"captions": [], "source": None, "language": None}
 
-        # Download caption file to temp
-        tmp_dir = tempfile.mkdtemp()
-        try:
-            tmp_file = os.path.join(tmp_dir, f"captions.{track['ext']}")
-            response = ydl.urlopen(track["url"])
-            with open(tmp_file, "wb") as f:
-                shutil.copyfileobj(response, f)
+            # Download caption file to temp
+            tmp_dir = tempfile.mkdtemp()
+            try:
+                tmp_file = os.path.join(tmp_dir, f"captions.{track['ext']}")
+                response = ydl.urlopen(track["url"])
+                with open(tmp_file, "wb") as f:
+                    shutil.copyfileobj(response, f)
 
-            with open(tmp_file, "r", encoding="utf-8", errors="replace") as f:
-                content = f.read()
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
+                with open(tmp_file, "r", encoding="utf-8", errors="replace") as f:
+                    content = f.read()
+            finally:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+    finally:
+        cleanup_shadow_profile(ydl_opts)
 
     # Parse
     fmt = _detect_format(content)
