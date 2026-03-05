@@ -33,17 +33,26 @@ async def analyze_clips(video_id: str):
     Returns:
       Ranked list of viral clip candidates with scores, timestamps, titles, and hooks.
     """
-    logger.info("Clip selector analysis requested for video_id=%s", video_id)
+    logger.info(">>> BEGIN Clip selector analysis for video_id=%s", video_id)
+    import time
+    start_time = time.perf_counter()
+    
     try:
         ranked_clips = run_clip_selector(video_id)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        logger.warning("[%s] Validation error: %s", video_id, e)
+        raise HTTPException(status_code=404, detail=f"Validation error: {e}")
     except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("[%s] Pipeline runtime error: %s", video_id, e)
+        raise HTTPException(status_code=500, detail=f"Pipeline error: {e}")
     except Exception as e:
-        logger.exception("Unexpected error during clip selection for %s", video_id)
-        raise HTTPException(status_code=500, detail=f"Clip selection failed: {e}")
+        logger.exception("[%s] Unexpected critical failure", video_id)
+        raise HTTPException(status_code=500, detail=f"Unexpected failure in clip selection: {type(e).__name__}: {e}")
 
+    duration = time.perf_counter() - start_time
+    logger.info("<<< END Clip selector analysis for video_id=%s (Total: %.2fs, Clips: %d)", 
+                video_id, duration, len(ranked_clips))
+    
     clips = [RankedClip(**c) for c in ranked_clips]
     return ClipSelectorResponse(
         video_id=video_id,

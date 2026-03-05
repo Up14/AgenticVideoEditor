@@ -296,141 +296,216 @@ export default function App() {
 
   return (
     <div className="app" tabIndex={0} onKeyDown={handleKeyDown}>
-      {/* Header */}
-      <header className="app__header">
-        <h1>🎬 Video Selection Tool</h1>
-        <span className="app__subtitle">
-          Load a YouTube video, select multiple clips, export with captions
-        </span>
-      </header>
-
-      {/* URL Input */}
-      <URLInput onSubmit={handleProcessUrl} isLoading={isLoading} />
-
-      {/* Loading State */}
-      {isLoading && (
-        <div className="loading-overlay">
-          <div className="loading-spinner" />
-          <p>Downloading video & extracting captions...</p>
-          <p className="loading-hint">This may take a minute for longer videos</p>
+      {/* Navbar */}
+      <nav className="navbar">
+        <div className="navbar__inner">
+          <div className="navbar__brand">
+            <div className="navbar__logo">V</div>
+            <span className="navbar__title">Videdi</span>
+            <span className="navbar__badge">Beta</span>
+          </div>
+          <div className="navbar__actions">
+            <span className="navbar__link">Shortcuts: Space / I / O / N</span>
+            <button className="navbar__cta" onClick={() => document.getElementById("yt-url")?.focus()}>
+              New Video
+            </button>
+          </div>
         </div>
-      )}
+      </nav>
 
-      {/* AI Analysis Banner */}
-      {isAnalyzing && (
-        <div className="loading-overlay">
-          <div className="loading-spinner" />
-          <p>🤖 AI is finding the best viral clips...</p>
-          <p className="loading-hint">Analysing transcript, scoring hooks &amp; emotions</p>
-        </div>
-      )}
+      {/* Hero + URL Input */}
+      {!videoData && (
+        <section className="hero">
+          <p className="hero__label">AI-Powered Video Clipping</p>
+          <h1 className="hero__heading">
+            Select the best clips,<br /><span>automatically.</span>
+          </h1>
+          <p className="hero__subtitle">
+            Paste a YouTube URL and let AI find viral-worthy moments.
+            Fine-tune selections on the timeline, then export with captions.
+          </p>
+          <URLInput onSubmit={handleProcessUrl} isLoading={isLoading} />
 
-      {/* Error */}
-      {error && (
-        <div className="error-banner">
-          <span>❌ {error}</span>
-          <button onClick={() => setError(null)}>Dismiss</button>
-        </div>
-      )}
-
-      {/* Editor */}
-      {videoData && (
-        <div className="editor">
-          <h2 className="editor__title">{videoData.title}</h2>
-
-          {/* Video Player */}
-          <VideoPlayer
-            videoRef={videoRef}
-            src={getVideoStreamUrl(videoData.video_id)}
-            onLoadedMetadata={handleLoadedMetadata}
-            isPlaying={isPlaying}
-            onTogglePlay={togglePlay}
-            currentTime={currentTime}
-            duration={duration}
-          />
-
-          {/* Timeline */}
-          <Timeline
-            duration={duration}
-            currentTime={currentTime}
-            captions={captions}
-            segments={segments}
-            activeSegmentId={activeSegmentId}
-            onSegmentChange={handleSegmentChange}
-            onSegmentSelect={setActiveSegmentId}
-            onSeek={seekTo}
-          />
-
-          {/* Toolbar */}
-          <Toolbar
-            segments={segments}
-            activeSegmentId={activeSegmentId}
-            duration={duration}
-            onSegmentChange={handleSegmentChange}
-            onAddSegment={handleAddSegment}
-            onRemoveSegment={handleRemoveSegment}
-            onSelectSegment={setActiveSegmentId}
-            onExport={handleExport}
-            onSeekToSegment={handleSeekToSegment}
-            isExporting={isExporting}
-          />
-
-          {/* Download CSV button */}
-          {segments.length > 0 && (
-            <div style={{ display: "flex", justifyContent: "flex-end", margin: "8px 0" }}>
-              <button
-                className="btn-secondary"
-                onClick={handleDownloadCsv}
-                disabled={isCsvExporting}
-                title="Download timestamps + captions as CSV"
-              >
-                {isCsvExporting ? "⏳ Preparing CSV..." : "📄 Download CSV"}
-              </button>
-            </div>
-          )}
-
-          {/* Export Results */}
-          {exportResults && (
-            <div className="export-result">
-              <h3>✅ {exportResults.length} Clip{exportResults.length > 1 ? "s" : ""} Exported!</h3>
-              <div className="export-result__grid">
-                {exportResults.map((result, i) => {
-                  const palette = getSegmentColor(i);
-                  return (
-                    <div key={i} className="export-result__item" style={{ borderLeftColor: palette.color }}>
-                      <div className="export-result__label" style={{ color: palette.color }}>
-                        {result.label} ({formatTime(result.start)} → {formatTime(result.end)})
-                      </div>
-                      <div className="export-result__links">
-                        <a href={getDownloadUrl(result.clip_url)} download className="btn-download">
-                          ⬇️ Video
-                        </a>
-                        <a href={getDownloadUrl(result.captions_url)} download className="btn-download btn-download--secondary">
-                          📄 Captions
-                        </a>
-                      </div>
-                    </div>
-                  );
-                })}
+          {/* Loading Card */}
+          {isLoading && (
+            <div className="loading-card">
+              <div className="loading-card__spinner" />
+              <div className="loading-card__content">
+                <h3 className="loading-card__title">Processing your video</h3>
+                <p className="loading-card__text">Downloading video & extracting captions...</p>
+                <div className="loading-card__steps">
+                  <div className="loading-step loading-step--active">
+                    <div className="loading-step__dot" />
+                    <span>Fetching video</span>
+                  </div>
+                  <div className="loading-step">
+                    <div className="loading-step__dot" />
+                    <span>Extracting audio</span>
+                  </div>
+                  <div className="loading-step">
+                    <div className="loading-step__dot" />
+                    <span>Generating captions</span>
+                  </div>
+                </div>
               </div>
             </div>
           )}
 
-          {/* Caption Panel */}
-          <CaptionPanel
-            captions={captions}
-            segments={segments}
-            activeCaption={activeCaption}
-            activeCaptionIndex={activeCaptionIndex}
-            onSeek={seekTo}
-          />
+          {/* AI Analysis Card */}
+          {isAnalyzing && !isLoading && (
+            <div className="loading-card">
+              <div className="loading-card__spinner" />
+              <div className="loading-card__content">
+                <h3 className="loading-card__title">AI is analyzing your video</h3>
+                <p className="loading-card__text">Finding the best viral-worthy clips...</p>
+                <div className="loading-card__steps">
+                  <div className="loading-step loading-step--done">
+                    <div className="loading-step__dot" />
+                    <span>Video processed</span>
+                  </div>
+                  <div className="loading-step loading-step--active">
+                    <div className="loading-step__dot" />
+                    <span>Scoring hooks & emotions</span>
+                  </div>
+                  <div className="loading-step">
+                    <div className="loading-step__dot" />
+                    <span>Ranking clips</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
-          {/* Keyboard Shortcuts Help */}
-          <div className="shortcuts-hint">
-            <b>Shortcuts:</b> Space = Play/Pause · I = Set In · O = Set
-            Out · N = New Segment · ← → = Seek ±5s
+      <div className="app__content">
+
+        {/* Error */}
+        {error && (
+          <div className="error-banner">
+            <span>{error}</span>
+            <button onClick={() => setError(null)}>Dismiss</button>
           </div>
-        </div>
+        )}
+
+        {/* Editor */}
+        {videoData && (
+          <div className="editor">
+            <h2 className="editor__title">{videoData.title}</h2>
+
+            <div className="editor__layout">
+              {/* Main column: video + timeline + toolbar */}
+              <div className="editor__main">
+                {/* Video Player */}
+                <VideoPlayer
+                  videoRef={videoRef}
+                  src={getVideoStreamUrl(videoData.video_id)}
+                  onLoadedMetadata={handleLoadedMetadata}
+                  isPlaying={isPlaying}
+                  onTogglePlay={togglePlay}
+                  currentTime={currentTime}
+                  duration={duration}
+                />
+
+                {/* Timeline */}
+                <Timeline
+                  duration={duration}
+                  currentTime={currentTime}
+                  captions={captions}
+                  segments={segments}
+                  activeSegmentId={activeSegmentId}
+                  onSegmentChange={handleSegmentChange}
+                  onSegmentSelect={handleSeekToSegment}
+                  onSeek={seekTo}
+                />
+
+                {/* Toolbar */}
+                <Toolbar
+                  segments={segments}
+                  activeSegmentId={activeSegmentId}
+                  duration={duration}
+                  onSegmentChange={handleSegmentChange}
+                  onAddSegment={handleAddSegment}
+                  onRemoveSegment={handleRemoveSegment}
+                  onSelectSegment={handleSeekToSegment}
+                  onExport={handleExport}
+                  onSeekToSegment={handleSeekToSegment}
+                  isExporting={isExporting}
+                />
+
+                {/* Download CSV button */}
+                {segments.length > 0 && (
+                  <div style={{ display: "flex", justifyContent: "flex-end", margin: "8px 0" }}>
+                    <button
+                      className="btn-secondary"
+                      onClick={handleDownloadCsv}
+                      disabled={isCsvExporting}
+                      title="Download timestamps + captions as CSV"
+                    >
+                      {isCsvExporting ? "Preparing CSV..." : "Download CSV"}
+                    </button>
+                  </div>
+                )}
+
+                {/* Export Results */}
+                {exportResults && (
+                  <div className="export-result">
+                    <h3>{exportResults.length} Clip{exportResults.length > 1 ? "s" : ""} Exported</h3>
+                    <div className="export-result__grid">
+                      {exportResults.map((result, i) => {
+                        const palette = getSegmentColor(i);
+                        return (
+                          <div key={i} className="export-result__item" style={{ borderLeftColor: palette.color }}>
+                            <div className="export-result__label" style={{ color: palette.color }}>
+                              {result.label} ({formatTime(result.start)} &rarr; {formatTime(result.end)})
+                            </div>
+                            <div className="export-result__links">
+                              <a href={getDownloadUrl(result.clip_url)} download className="btn-download">
+                                Video
+                              </a>
+                              <a href={getDownloadUrl(result.captions_url)} download className="btn-download btn-download--secondary">
+                                Captions
+                              </a>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Keyboard Shortcuts Help */}
+                <div className="shortcuts-hint">
+                  <b>Shortcuts</b>&nbsp;&nbsp; Space = Play/Pause &middot; I = Set In &middot; O = Set
+                  Out &middot; N = New Segment &middot; &larr; &rarr; = Seek &plusmn;5s
+                </div>
+              </div>
+
+              {/* Sidebar: captions */}
+              <aside className="editor__sidebar">
+                <CaptionPanel
+                  captions={captions}
+                  segments={segments}
+                  activeSegmentId={activeSegmentId}
+                  duration={duration}
+                  activeCaption={activeCaption}
+                  activeCaptionIndex={activeCaptionIndex}
+                  onSeek={seekTo}
+                  onSegmentChange={handleSegmentChange}
+                />
+              </aside>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      {!videoData && !isLoading && !isAnalyzing && (
+        <footer className="footer">
+          <p className="footer__text">
+            Built with <span className="footer__brand">Videdi</span> &mdash; AI Video Selection Platform
+          </p>
+        </footer>
       )}
     </div>
   );
