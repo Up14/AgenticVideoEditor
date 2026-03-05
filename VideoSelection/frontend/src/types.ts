@@ -18,14 +18,14 @@ export interface Segment {
  * Each entry has a fill color and a dimmed version for the overlay.
  */
 export const SEGMENT_COLORS = [
-  { color: "#00dc64", dim: "rgba(0, 220, 100, 0.2)",  name: "Green" },
-  { color: "#4ea8de", dim: "rgba(78, 168, 222, 0.2)",  name: "Blue" },
-  { color: "#e05555", dim: "rgba(224, 85, 85, 0.2)",   name: "Red" },
-  { color: "#f5a623", dim: "rgba(245, 166, 35, 0.2)",  name: "Orange" },
-  { color: "#c77dff", dim: "rgba(199, 125, 255, 0.2)", name: "Purple" },
-  { color: "#72efdd", dim: "rgba(114, 239, 221, 0.2)", name: "Teal" },
-  { color: "#f9c74f", dim: "rgba(249, 199, 79, 0.2)",  name: "Yellow" },
-  { color: "#ff6b9d", dim: "rgba(255, 107, 157, 0.2)", name: "Pink" },
+  { color: "#a855f7", dim: "rgba(168, 85, 247, 0.2)",  name: "Purple" },
+  { color: "#3b82f6", dim: "rgba(59, 130, 246, 0.2)",  name: "Blue" },
+  { color: "#ef4444", dim: "rgba(239, 68, 68, 0.2)",   name: "Red" },
+  { color: "#f59e0b", dim: "rgba(245, 158, 11, 0.2)",  name: "Amber" },
+  { color: "#10b981", dim: "rgba(16, 185, 129, 0.2)",  name: "Emerald" },
+  { color: "#06b6d4", dim: "rgba(6, 182, 212, 0.2)",   name: "Cyan" },
+  { color: "#f97316", dim: "rgba(249, 115, 22, 0.2)",  name: "Orange" },
+  { color: "#ec4899", dim: "rgba(236, 72, 153, 0.2)",  name: "Pink" },
 ];
 
 /**

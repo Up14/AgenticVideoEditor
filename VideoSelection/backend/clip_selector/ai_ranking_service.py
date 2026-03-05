@@ -8,7 +8,7 @@ import time
 import logging
 from itertools import cycle
 
-from cerebras.cloud.sdk import Cerebras
+from cerebras.cloud.sdk import Cerebras, RateLimitError
 from clip_selector.config import CEREBRAS_API_KEYS
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ def extract_json_safely(text):
 class APIKeyManager:
     """Manages API keys, client rotation, and rate limiting."""
 
-    def __init__(self, api_keys, rate_limit=28, period_seconds=60):
+    def __init__(self, api_keys, rate_limit=14, period_seconds=60): # Conservative default (half of 28/min)
         if not api_keys:
             raise RuntimeError("No API keys provided. Check CEREBRAS_API_KEYS in .env.")
         self.clients    = {key: Cerebras(api_key=key) for key in api_keys}
@@ -66,13 +66,13 @@ class APIKeyManager:
         oldest_ts  = min(min(ts) for ts in self.usage.values() if ts)
         sleep_time = self.period - (time.monotonic() - oldest_ts) + 1.5
         logger.warning(
-            "All API keys are rate-limited. Waiting %.1fs for refresh...", sleep_time
+            "All API keys are local rate-limited. Waiting %.1fs for refresh...", sleep_time
         )
         time.sleep(sleep_time)
         return self.get_client()
 
 
-def rank_candidates_ai(candidates, client):
+def rank_candidates_ai(candidates, client, max_retries=5):
     """Consolidated Single-Pass AI Ranking: Scores viral potential and standalone readiness."""
     if not candidates:
         return [], "", ""
@@ -119,43 +119,68 @@ Return ONLY a JSON list:
   ...
 ]
 """
-    try:
-        stream = client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user",   "content": user_prompt}
-            ],
-            model="gpt-oss-120b",
-            stream=True,
-            max_tokens=2500,
-            temperature=0.3
-        )
+    
+    attempt = 0
+    while attempt <= max_retries:
+        try:
+            stream = client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user",   "content": user_prompt}
+                ],
+                model="gpt-oss-120b", # Aligned with reference code
+                stream=True,
+                max_tokens=2500,
+                temperature=0.3
+            )
 
-        response_text = "".join(
-            c.choices[0].delta.content or "" for c in stream
-        ).strip()
+            response_text = "".join(
+                c.choices[0].delta.content or "" for c in stream
+            ).strip()
 
-        data = extract_json_safely(response_text)
-        if isinstance(data, list):
-            for item in data:
-                idx = item.get('index')
-                if idx is not None and 0 <= idx < len(candidates):
-                    candidates[idx].update({
-                        "ai_viral_score":          item.get('viral_score', 0),
-                        "standalone_understanding": item.get('standalone_score', 0),
-                        "resolution_score":         item.get('resolution_score', 0),
-                        "context_dependency":       item.get('context_dependency', 0),
-                        "title":                    item.get('title', 'Untitled'),
-                        "hook_reason":              item.get('hook_reason', 'N/A')
-                    })
-            return candidates, response_text, user_prompt
+            data = extract_json_safely(response_text)
+            if isinstance(data, list):
+                for item in data:
+                    idx = item.get('index')
+                    if idx is not None and 0 <= idx < len(candidates):
+                        candidates[idx].update({
+                            "ai_viral_score":          item.get('viral_score', 0),
+                            "standalone_understanding": item.get('standalone_score', 0),
+                            "resolution_score":         item.get('resolution_score', 0),
+                            "context_dependency":       item.get('context_dependency', 0),
+                            "title":                    item.get('title', 'Untitled'),
+                            "hook_reason":              item.get('hook_reason', 'N/A')
+                        })
+                return candidates, response_text, user_prompt
 
-        logger.error("AI ranking returned unexpected format: %s", response_text[:200])
-        return [], response_text, user_prompt
+            logger.error("AI ranking returned unexpected format: %s", response_text[:200])
+            return [], response_text, user_prompt
 
-    except Exception as e:
-        logger.exception("AI Ranking failed")
-        raise RuntimeError(f"AI Ranking failed: {e}") from e
+        except RateLimitError as e:
+            attempt += 1
+            if attempt > max_retries:
+                logger.error("Max retries exceeded for Cerebras API 429 error.")
+                raise e
+
+            wait_time = (2 ** attempt) + 1.5 # Exponential backoff: 3.5s, 5.5s, 9.5s, etc.
+            logger.warning(
+                "Cerebras API Rate Limit (429). Retry %d/%d in %.1fs...",
+                attempt, max_retries, wait_time
+            )
+            time.sleep(wait_time)
+
+        except Exception as e:
+            logger.exception("AI Ranking failed with unhandled error")
+            raise RuntimeError(f"AI Ranking failed: {e}") from e
+
+
+_key_manager = None
+
+def get_key_manager() -> APIKeyManager:
+    global _key_manager
+    if _key_manager is None:
+        _key_manager = APIKeyManager(CEREBRAS_API_KEYS)
+    return _key_manager
 
 
 _key_manager = None
