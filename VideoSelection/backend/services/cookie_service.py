@@ -13,6 +13,7 @@ import shutil
 import tempfile
 import logging
 from typing import Dict, Any, Optional
+import yt_dlp
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,37 @@ def get_browser_user_data_path(browser: str) -> Optional[str]:
 MEDIA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "media")
 os.makedirs(MEDIA_DIR, exist_ok=True)
 COOKIE_CACHE_FILE = os.path.join(MEDIA_DIR, "videdi_cookies.txt")
+COOKIES_FILE = os.path.join(MEDIA_DIR, "cookies.txt")
+
+
+class CookieExtractionError(Exception):
+    pass
+
+
+def extract_chrome_cookies() -> str:
+    """Extract YouTube cookies from Chrome and save to media/cookies.txt."""
+    try:
+        ydl_opts = {
+            "cookiesfrombrowser": ("chrome",),
+            "cookiefile": COOKIES_FILE,
+            "quiet": True,
+            "no_warnings": True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            try:
+                ydl.extract_info(
+                    "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                    download=False,
+                )
+            except Exception:
+                pass  # Video errors are irrelevant; we only need the cookie file written
+    except Exception:
+        raise CookieExtractionError("Please close Chrome and try again")
+
+    if not os.path.exists(COOKIES_FILE) or os.path.getsize(COOKIES_FILE) == 0:
+        raise CookieExtractionError("Please close Chrome and try again")
+
+    return COOKIES_FILE
 
 def robust_copy(src: str, dst: str) -> bool:
     """Attempts a robust copy on Windows, handles locks better than shutil."""
@@ -130,7 +162,11 @@ def get_smart_cookie_opts() -> Dict[str, Any]:
     cookie_browser = os.getenv("YOUTUBE_COOKIES_BROWSER")
     if cookie_browser:
         return {"cookiesfrombrowser": (cookie_browser,)}
-        
+
+    # 4. Fallback: use previously extracted cookies file
+    if os.path.exists(COOKIES_FILE):
+        return {"cookiefile": COOKIES_FILE}
+
     return {}
 
 def cleanup_shadow_profile(ydl_opts: Dict[str, Any]):
