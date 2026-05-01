@@ -91,3 +91,37 @@ def test_get_smart_cookie_opts_no_fallback_when_file_missing(monkeypatch):
 
     opts = get_smart_cookie_opts()
     assert opts == {}
+
+
+# ── Router tests ──
+from fastapi.testclient import TestClient
+
+
+def test_cookies_status_returns_false_when_no_file(tmp_path, monkeypatch):
+    monkeypatch.setattr("services.cookie_service.COOKIES_FILE", str(tmp_path / "cookies.txt"))
+    import importlib, routers.cookies as rc
+    importlib.reload(rc)
+    from fastapi import FastAPI
+    app = FastAPI()
+    app.include_router(rc.router)
+    client = TestClient(app)
+
+    response = client.get("/api/cookies/status")
+    assert response.status_code == 200
+    assert response.json() == {"available": False}
+
+
+def test_cookies_extract_returns_error_on_failure(tmp_path, monkeypatch):
+    monkeypatch.setattr("services.cookie_service.COOKIES_FILE", str(tmp_path / "cookies.txt"))
+    import importlib, routers.cookies as rc
+    importlib.reload(rc)
+    from fastapi import FastAPI
+    app = FastAPI()
+    app.include_router(rc.router)
+    client = TestClient(app)
+
+    with patch("routers.cookies.extract_chrome_cookies", side_effect=CookieExtractionError("Please close Chrome and try again")):
+        response = client.post("/api/cookies/extract")
+    assert response.status_code == 200
+    assert response.json()["success"] is False
+    assert "Chrome" in response.json()["error"]
