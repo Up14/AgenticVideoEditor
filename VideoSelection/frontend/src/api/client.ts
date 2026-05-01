@@ -2,7 +2,7 @@
  * API client — communicates with the FastAPI backend.
  */
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "";
 
 export interface Caption {
   start: number;

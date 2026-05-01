@@ -60,12 +60,20 @@ export default function CookieConsentModal({ onAccepted, onDeclined }: Props) {
         {state === "error" && (
           <div className="cookie-modal__error">
             <p>{errorMsg}</p>
-            <button
-              className="cookie-modal__btn cookie-modal__btn--accept"
-              onClick={handleAccept}
-            >
-              Retry
-            </button>
+            <div className="cookie-modal__actions">
+              <button
+                className="cookie-modal__btn cookie-modal__btn--accept"
+                onClick={handleAccept}
+              >
+                Retry
+              </button>
+              <button
+                className="cookie-modal__btn cookie-modal__btn--decline"
+                onClick={onDeclined}
+              >
+                Skip (public videos only)
+              </button>
+            </div>
           </div>
         )}
       </div>
