@@ -1,0 +1,11 @@
+streamlit
+cerebras-cloud-sdk
+pandas
+openpyxl
+spacy
+numpy
+sentence-transformers
+transformers
+torch
+scikit-learn
+scipy
