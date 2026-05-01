@@ -152,3 +152,23 @@ export async function exportClipsCSV(
 
   return res.blob();
 }
+
+export interface CookieExtractResponse {
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * POST /api/cookies/extract — Extract YouTube cookies from Chrome.
+ */
+export async function extractCookies(): Promise<CookieExtractResponse> {
+  const res = await fetch(`${API_BASE}/api/cookies/extract`, {
+    method: "POST",
+  });
+
+  if (!res.ok) {
+    return { success: false, error: `HTTP ${res.status}` };
+  }
+
+  return res.json();
+}
