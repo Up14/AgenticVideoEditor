@@ -30,8 +30,7 @@ Thumbs.db
 *.log
 
 # Environment variables
-.env
-.env.local
+# .env files are intentionally tracked for portability
 
 # ML model cache
 .cache/
@@ -58,8 +57,7 @@ build/
 .ipynb_checkpoints/
 
 # Environment variables
-.env
-.env.*
+# .env files are intentionally tracked for portability
 
 # OS files
 .DS_Store
