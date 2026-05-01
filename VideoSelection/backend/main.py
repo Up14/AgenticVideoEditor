@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from routers import process, video, captions, export
 from clip_selector.router import router as clip_selector_router
+from routers.cookies import router as cookies_router
 
 # ── Logging ──
 logging.basicConfig(
@@ -46,6 +47,7 @@ app.include_router(video.router)
 app.include_router(captions.router)
 app.include_router(export.router)
 app.include_router(clip_selector_router)
+app.include_router(cookies_router)
 
 
 @app.get("/")
