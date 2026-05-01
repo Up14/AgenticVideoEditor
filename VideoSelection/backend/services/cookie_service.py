@@ -42,11 +42,40 @@ class CookieExtractionError(Exception):
     pass
 
 
+def _detect_browser() -> tuple[str, str] | None:
+    """Returns (yt_dlp_browser_name, display_name) for the first available browser."""
+    import sys
+    candidates = []
+    if sys.platform == "win32":
+        candidates = [("chrome", "Chrome"), ("edge", "Edge"), ("brave", "Brave")]
+    else:
+        # Linux / macOS — check profile dirs
+        home = os.path.expanduser("~")
+        linux_browsers = [
+            ("chromium", "Chromium", os.path.join(home, ".config", "chromium")),
+            ("chrome", "Chrome", os.path.join(home, ".config", "google-chrome")),
+            ("firefox", "Firefox", os.path.join(home, ".mozilla", "firefox")),
+            ("brave", "Brave", os.path.join(home, ".config", "BraveSoftware", "Brave-Browser")),
+        ]
+        for yt_name, display, profile_path in linux_browsers:
+            if os.path.exists(profile_path):
+                candidates.append((yt_name, display))
+
+    return candidates[0] if candidates else None
+
+
 def extract_chrome_cookies() -> str:
-    """Extract YouTube cookies from Chrome and save to media/cookies.txt."""
+    """Extract YouTube cookies from the best available browser and save to media/cookies.txt."""
+    browser = _detect_browser()
+    if browser is None:
+        raise CookieExtractionError(
+            "No supported browser found. Install Chromium and log into YouTube, then try again."
+        )
+
+    yt_name, display_name = browser
     try:
         ydl_opts = {
-            "cookiesfrombrowser": ("chrome",),
+            "cookiesfrombrowser": (yt_name,),
             "cookiefile": COOKIES_FILE,
             "quiet": True,
             "no_warnings": True,
@@ -59,11 +88,15 @@ def extract_chrome_cookies() -> str:
                 )
             except Exception:
                 pass  # Video errors are irrelevant; we only need the cookie file written
-    except Exception:
-        raise CookieExtractionError("Please close Chrome and try again")
+    except Exception as e:
+        raise CookieExtractionError(
+            f"Could not read {display_name} cookies. Make sure you're logged into YouTube in {display_name}, then try again."
+        )
 
     if not os.path.exists(COOKIES_FILE) or os.path.getsize(COOKIES_FILE) == 0:
-        raise CookieExtractionError("Please close Chrome and try again")
+        raise CookieExtractionError(
+            f"No cookies found in {display_name}. Open {display_name}, log into YouTube, then try again."
+        )
 
     return COOKIES_FILE
 
