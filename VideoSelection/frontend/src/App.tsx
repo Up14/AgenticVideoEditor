@@ -25,6 +25,8 @@ import {
   formatTime,
 } from "./types";
 import "./App.css";
+import "./components/CookieConsentModal.css";
+import CookieConsentModal from "./components/CookieConsentModal";
 
 /**
  * Main application — orchestrates all components with multi-segment support.
@@ -55,6 +57,29 @@ export default function App() {
     togglePlay,
     handleLoadedMetadata,
   } = useVideoSync(activeSegment?.start ?? 0, activeSegment?.end ?? 0);
+
+  // ── Cookie Consent ──
+  const [consentStatus, setConsentStatus] = useState<"unknown" | "accepted" | "declined">(() => {
+    const stored = localStorage.getItem("cookie_consent");
+    if (stored === "accepted") return "accepted";
+    if (stored === "declined") return "declined";
+    return "unknown";
+  });
+
+  function handleCookieAccepted() {
+    localStorage.setItem("cookie_consent", "accepted");
+    setConsentStatus("accepted");
+  }
+
+  function handleCookieDeclined() {
+    localStorage.setItem("cookie_consent", "declined");
+    setConsentStatus("declined");
+  }
+
+  function handleReopenConsent() {
+    localStorage.removeItem("cookie_consent");
+    setConsentStatus("unknown");
+  }
 
   // ── Export State ──
   const [isExporting, setIsExporting] = useState(false);
@@ -293,6 +318,33 @@ export default function App() {
   );
 
   // ── Render ──
+
+  if (consentStatus === "unknown") {
+    return (
+      <CookieConsentModal
+        onAccepted={handleCookieAccepted}
+        onDeclined={handleCookieDeclined}
+      />
+    );
+  }
+
+  if (consentStatus === "declined") {
+    return (
+      <div className="cookie-modal__blocked">
+        <h2>Cookie Access Required</h2>
+        <p>
+          This app requires access to your YouTube cookies to function.
+          Please accept cookies to continue.
+        </p>
+        <button
+          className="cookie-modal__btn cookie-modal__btn--accept"
+          onClick={handleReopenConsent}
+        >
+          Review Cookie Settings
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="app" tabIndex={0} onKeyDown={handleKeyDown}>
