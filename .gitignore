@@ -30,7 +30,7 @@ Thumbs.db
 *.log
 
 # Environment variables
-# .env files are intentionally tracked for portability
+.env
 
 # ML model cache
 .cache/
@@ -55,9 +55,6 @@ build/
 
 # Jupyter Notebooks checkpoints
 .ipynb_checkpoints/
-
-# Environment variables
-# .env files are intentionally tracked for portability
 
 # OS files
 .DS_Store

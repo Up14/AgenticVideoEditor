@@ -120,7 +120,11 @@ npm run dev
 
 ## Environment Variables
 
-The `.env` file is committed at `VideoSelection/backend/.env`:
+Copy `.env.example` to `.env` in `VideoSelection/backend/` and fill in your keys:
+
+```
+cp VideoSelection/backend/.env.example VideoSelection/backend/.env
+```
 
 | Variable | Description |
 |---|---|
